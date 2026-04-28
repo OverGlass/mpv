@@ -98,6 +98,8 @@ gen_meson_crossfile() {
 [binaries]
 c = ['$CC']
 cpp = ['$CXX']
+objc = ['$CC']
+objcpp = ['$CXX']
 ar = ['$(xcrun --sdk "$SDK" -f ar)']
 strip = ['$(xcrun --sdk "$SDK" -f strip)']
 pkg-config = ['$(command -v pkg-config)']
@@ -110,6 +112,10 @@ c_args = [$(printf "'%s', " $CFLAGS | sed 's/, $//')]
 c_link_args = [$(printf "'%s', " $LDFLAGS | sed 's/, $//')]
 cpp_args = [$(printf "'%s', " $CXXFLAGS | sed 's/, $//')]
 cpp_link_args = [$(printf "'%s', " $LDFLAGS | sed 's/, $//')]
+objc_args = [$(printf "'%s', " $CFLAGS | sed 's/, $//')]
+objc_link_args = [$(printf "'%s', " $LDFLAGS | sed 's/, $//')]
+objcpp_args = [$(printf "'%s', " $CXXFLAGS | sed 's/, $//')]
+objcpp_link_args = [$(printf "'%s', " $LDFLAGS | sed 's/, $//')]
 
 [properties]
 needs_exe_wrapper = true
@@ -384,7 +390,6 @@ EOF
       -Dalsa=disabled \
       -Djack=disabled \
       -Dopenal=disabled \
-      -Dsdl2=disabled \
       -Dsdl2-audio=disabled \
       -Dsdl2-video=disabled \
       -Dx11=disabled \

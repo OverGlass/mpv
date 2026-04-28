@@ -28,14 +28,14 @@
 #include "audio/format.h"
 #include "osdep/mac/compat.h"
 
-#if HAVE_COREAUDIO || HAVE_AVFOUNDATION
+#if MP_HAVE_CA_DEVICE_API
 #include "audio/out/ao_coreaudio_properties.h"
 #include <CoreAudio/HostTime.h>
 #else
 #include <mach/mach_time.h>
 #endif
 
-#if HAVE_COREAUDIO || HAVE_AVFOUNDATION
+#if MP_HAVE_CA_DEVICE_API
 static bool ca_is_output_device(struct ao *ao, AudioDeviceID dev)
 {
     size_t n_buffers;
@@ -298,9 +298,16 @@ int64_t ca_frames_to_ns(struct ao *ao, uint32_t frames)
     return MP_TIME_S_TO_NS(frames / (double)ao->samplerate);
 }
 
+#if !MP_HAVE_CA_DEVICE_API
+// iOS / tvOS stub. There's no system-wide audio-device enumeration on these
+// platforms; ao_avfoundation passes the (single) system route as ao->device
+// and the player resolves "default" from there. Returning empty is correct.
+void ca_get_device_list(struct ao *ao, struct ao_device_list *list) { }
+#endif
+
 int64_t ca_get_latency(const AudioTimeStamp *ts)
 {
-#if HAVE_COREAUDIO || HAVE_AVFOUNDATION
+#if MP_HAVE_CA_DEVICE_API
     uint64_t out = AudioConvertHostTimeToNanos(ts->mHostTime);
     uint64_t now = AudioConvertHostTimeToNanos(AudioGetCurrentHostTime());
 
@@ -323,7 +330,7 @@ int64_t ca_get_latency(const AudioTimeStamp *ts)
 #endif
 }
 
-#if HAVE_COREAUDIO || HAVE_AVFOUNDATION
+#if MP_HAVE_CA_DEVICE_API
 bool ca_stream_supports_compressed(struct ao *ao, AudioStreamID stream)
 {
     AudioStreamRangedDescription *formats = NULL;

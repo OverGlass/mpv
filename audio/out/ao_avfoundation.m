@@ -249,9 +249,14 @@ static int init(struct ao *ao)
         goto error;
     }
 
+    // setAudioOutputDeviceUniqueID: is macOS / Mac Catalyst only on
+    // AVSampleBufferAudioRenderer. iOS / tvOS only have the system route, so
+    // ao->device is ignored on those platforms.
+#if TARGET_OS_OSX
     if (ao->device && ao->device[0]) {
         [p->renderer setAudioOutputDeviceUniqueID:(NSString*)cfstr_from_cstr(ao->device)];
     }
+#endif
 
     [p->synchronizer addRenderer:p->renderer];
 #if HAVE_MACOS_11_3_FEATURES

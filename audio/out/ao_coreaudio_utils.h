@@ -30,6 +30,24 @@
 #include "osdep/utils-mac.h"
 #include "osdep/threads.h"
 
+// MP_HAVE_CA_DEVICE_API: macOS-style CoreAudio device enumeration is
+// available. True on macOS and Mac Catalyst (where <CoreAudio/AudioHardware.h>
+// exposes AudioDeviceID + the kAudioHardwareProperty* selectors). False on
+// iOS/tvOS even when AVFoundation is enabled — those platforms only ship
+// <CoreAudio/CoreAudioTypes.h> and have no device-enumeration API.
+//
+// Upstream's gates use `HAVE_COREAUDIO || HAVE_AVFOUNDATION` which silently
+// breaks iOS+AVFoundation builds (the AO is otherwise structurally fine on
+// iOS — only ca_select_device / ca_get_device_list / ca_*_device need this).
+// mpv-apple fork extension; see commit history.
+#if HAVE_COREAUDIO
+#  define MP_HAVE_CA_DEVICE_API 1
+#elif HAVE_AVFOUNDATION && __has_include(<CoreAudio/AudioHardware.h>)
+#  define MP_HAVE_CA_DEVICE_API 1
+#else
+#  define MP_HAVE_CA_DEVICE_API 0
+#endif
+
 struct coreaudio_cb_sem {
     mp_mutex mutex;
     mp_cond cond;
@@ -53,7 +71,7 @@ bool check_ca_st(struct ao *ao, int level, OSStatus code, const char *message);
     } while (0)
 
 void ca_get_device_list(struct ao *ao, struct ao_device_list *list);
-#if HAVE_COREAUDIO || HAVE_AVFOUNDATION
+#if MP_HAVE_CA_DEVICE_API
 OSStatus ca_select_device(struct ao *ao, char* name, AudioDeviceID *device);
 #endif
 
@@ -71,7 +89,7 @@ bool ca_asbd_is_better(AudioStreamBasicDescription *req,
 int64_t ca_frames_to_ns(struct ao *ao, uint32_t frames);
 int64_t ca_get_latency(const AudioTimeStamp *ts);
 
-#if HAVE_COREAUDIO || HAVE_AVFOUNDATION
+#if MP_HAVE_CA_DEVICE_API
 bool ca_stream_supports_compressed(struct ao *ao, AudioStreamID stream);
 OSStatus ca_lock_device(AudioDeviceID device, pid_t *pid);
 OSStatus ca_unlock_device(AudioDeviceID device, pid_t *pid);

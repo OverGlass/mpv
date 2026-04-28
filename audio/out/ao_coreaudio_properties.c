@@ -24,6 +24,8 @@
 #include "mpv_talloc.h"
 #include "osdep/mac/compat.h"
 
+#if MP_HAVE_CA_DEVICE_API
+
 OSStatus ca_get(AudioObjectID id, ca_scope scope, ca_sel selector,
                 uint32_t size, void *data)
 {
@@ -101,3 +103,5 @@ Boolean ca_settable(AudioObjectID id, ca_scope scope, ca_sel selector,
 
     return AudioObjectIsPropertySettable(id, &p_addr, data);
 }
+
+#endif // MP_HAVE_CA_DEVICE_API

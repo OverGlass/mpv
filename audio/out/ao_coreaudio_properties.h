@@ -22,6 +22,9 @@
 #include <AudioToolbox/AudioToolbox.h>
 
 #include "internal.h"
+#include "audio/out/ao_coreaudio_utils.h"  // for MP_HAVE_CA_DEVICE_API
+
+#if MP_HAVE_CA_DEVICE_API
 
 // CoreAudio names are way too verbose
 #define ca_sel    AudioObjectPropertySelector
@@ -57,5 +60,7 @@ Boolean ca_settable(AudioObjectID id, ca_scope scope, ca_sel selector,
                     Boolean *data);
 
 #define CA_SETTABLE(id, sel, data) ca_settable(id, CA_GLOBAL, sel, data)
+
+#endif // MP_HAVE_CA_DEVICE_API
 
 #endif /* MPV_COREAUDIO_PROPERTIES_H */

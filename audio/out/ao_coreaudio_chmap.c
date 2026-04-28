@@ -405,6 +405,9 @@ coreaudio_error:
     return false;
 }
 
+#if MP_HAVE_CA_DEVICE_API
+// Functions below need AudioDeviceID + the kAudioHardwareProperty* selectors
+// from <CoreAudio/AudioHardware.h>. macOS / Mac Catalyst only.
 static AudioChannelLayout* ca_query_layout(struct ao *ao,
                                            AudioDeviceID device,
                                            void *talloc_ctx)
@@ -532,4 +535,5 @@ void ca_get_active_chmap(struct ao *ao, AudioDeviceID device, int channel_count,
     MP_WARN(ao, "mismatching channels - falling back to %s\n",
             mp_chmap_to_str(out_map));
 }
-#endif
+#endif // MP_HAVE_CA_DEVICE_API
+#endif // HAVE_COREAUDIO || HAVE_AVFOUNDATION

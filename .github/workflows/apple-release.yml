@@ -1,0 +1,68 @@
+name: apple-release
+
+on:
+  push:
+    tags:
+      - 'apple/v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Install build prerequisites
+        run: brew install meson ninja nasm pkg-config automake autoconf libtool jq
+
+      - name: Cache deps tarballs + clones
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: build/deps
+          key: deps-${{ runner.os }}-${{ hashFiles('apple/scripts/deps-lock.json') }}
+
+      - name: Build all xcframeworks
+        run: |
+          set -euo pipefail
+          ./apple/scripts/build.sh
+
+      - name: Generate review patch series
+        run: |
+          mkdir -p out/patches
+          git format-patch --output-directory out/patches upstream/master..HEAD
+          tar czf out/patches.tgz -C out patches
+
+      - name: Zip xcframeworks
+        run: |
+          cd build/xcframeworks
+          for D in *.xcframework; do
+            zip -qr "../../out/${D}.zip" "$D"
+          done
+          cp MANIFEST.json ../../out/
+
+      - name: Create GH release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            out/*.zip
+            out/MANIFEST.json
+            out/patches.tgz
+
+      - name: Upload artifacts (debug)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-logs
+          path: |
+            build/**/*.log
+            build/xcframeworks/MANIFEST.json

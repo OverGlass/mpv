@@ -1,0 +1,48 @@
+{
+  "$schema": "Pinned versions of every external dependency the Apple xcframework build pulls. Bump these together with a new apple/v* tag.",
+  "ffmpeg": {
+    "version": "7.1.1",
+    "url": "https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz",
+    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+  },
+  "libplacebo": {
+    "version": "v7.351.0",
+    "url": "https://github.com/haasn/libplacebo.git",
+    "ref": "v7.351.0"
+  },
+  "MoltenVK": {
+    "version": "v1.4.1",
+    "url": "https://github.com/KhronosGroup/MoltenVK.git",
+    "ref": "v1.4.1"
+  },
+  "libass": {
+    "version": "0.17.4",
+    "url": "https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.gz",
+    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+  },
+  "freetype": {
+    "version": "2.13.3",
+    "url": "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz",
+    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+  },
+  "fribidi": {
+    "version": "1.0.16",
+    "url": "https://github.com/fribidi/fribidi/releases/download/v1.0.16/fribidi-1.0.16.tar.xz",
+    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+  },
+  "harfbuzz": {
+    "version": "10.4.0",
+    "url": "https://github.com/harfbuzz/harfbuzz/releases/download/10.4.0/harfbuzz-10.4.0.tar.xz",
+    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+  },
+  "libunibreak": {
+    "version": "6.1",
+    "url": "https://github.com/adah1972/libunibreak/releases/download/libunibreak_6_1/libunibreak-6.1.tar.gz",
+    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+  },
+  "lcms2": {
+    "version": "2.17",
+    "url": "https://github.com/mm2/Little-CMS/releases/download/lcms2.17/lcms2-2.17.tar.gz",
+    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+  }
+}

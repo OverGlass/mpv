@@ -425,10 +425,21 @@ if features['cocoa']
     dependencies += cocoa
     path_source += files('osdep/path-mac.m')
     sources += files('osdep/language-mac.c',
-                     'osdep/utils-mac.c',
                      'osdep/mac/app_bridge.m',
                      'player/clipboard/clipboard-mac.m')
     main_fn_source = files('osdep/main-fn-mac.c')
+endif
+
+# osdep/utils-mac.c defines cfstr_get_cstr / cfstr_from_cstr — pure
+# CoreFoundation string helpers used by ao_avfoundation, ao_coreaudio,
+# ao_coreaudio_properties. Upstream gates this file on `cocoa` (which
+# implies macOS), but those AOs also exist on iOS+AVFoundation where
+# Cocoa is not present, leaving the symbols undefined at link time.
+# mpv-apple fork extension: gate on `darwin` (true for all Apple
+# platforms). The functions only touch CoreFoundation, which is
+# available everywhere darwin is true.
+if darwin
+    sources += files('osdep/utils-mac.c')
 endif
 
 if posix

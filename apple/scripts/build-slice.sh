@@ -138,16 +138,18 @@ case "$LIB" in
   freetype)
     SRC="$(src_dir freetype)"
     cd "$LIB_BUILD"
-    # CC_BUILD: freetype builds a small `apinames` host helper during make
-    # install (extracts the API symbol table). It must compile with the
-    # *host* compiler, not our cross-compile clang — otherwise the iOS /
-    # Catalyst sysroot is in effect on the host link and even <stdio.h>
-    # is unfindable. CC_BUILD is an autoconf substitution baked into
-    # builds/unix/unix-cc.in at configure time (not a make-time variable),
-    # so we pass it to configure as an environment variable. Pin to host
-    # clang with the macOS SDK explicitly resolved.
+    # apinames host-helper: freetype's Makefile builds a small `apinames`
+    # tool (extracts the API symbol table) during install via CCraw_build.
+    # If we let it default, CCraw_build ends up empty/host-default and
+    # the host link fails — for Catalyst especially, where the
+    # arm64-apple-ios15.0-macabi target leaks into the host build via
+    # the inherited environment and clang can't find <stdio.h>. Override
+    # CCraw_build directly at make-time so apinames compiles with host
+    # clang + the macOS SDK explicitly resolved. Bypassing configure's
+    # @CC_BUILD@ substitution avoids env-propagation flakes seen on
+    # macOS 26 / Xcode 26.
     HOST_CC_BUILD="$(xcrun --sdk macosx -f clang) -isysroot $(xcrun --sdk macosx --show-sdk-path)"
-    CC_BUILD="$HOST_CC_BUILD" "$SRC/configure" \
+    "$SRC/configure" \
       --host="$HOST_TRIPLE" \
       --prefix="$PREFIX" \
       --enable-static --disable-shared \
@@ -158,7 +160,7 @@ case "$LIB" in
     # Run serial here — slower per-file but avoids pile-up. Pre-warm the wrapper
     # so the first launch cost doesn't dominate.
     "$LIB_BUILD/libtool" --version >/dev/null 2>&1 || true
-    make -j1 install
+    make -j1 CCraw_build="$HOST_CC_BUILD" install
     ;;
 
   fribidi)

@@ -17,7 +17,7 @@ SLICES=("$@")
 
 LIBS=(
   "mpv"
-  "avcodec" "avformat" "avfilter" "avutil" "swresample" "swscale"
+  "avcodec" "avformat" "avfilter" "avutil" "swresample" "swscale" "postproc"
   "placebo"
   "MoltenVK"
   "ass" "freetype" "fribidi" "harfbuzz" "unibreak"

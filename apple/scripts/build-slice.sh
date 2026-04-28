@@ -138,7 +138,16 @@ case "$LIB" in
   freetype)
     SRC="$(src_dir freetype)"
     cd "$LIB_BUILD"
-    "$SRC/configure" \
+    # CC_BUILD: freetype builds a small `apinames` host helper during make
+    # install (extracts the API symbol table). It must compile with the
+    # *host* compiler, not our cross-compile clang — otherwise the iOS /
+    # Catalyst sysroot is in effect on the host link and even <stdio.h>
+    # is unfindable. CC_BUILD is an autoconf substitution baked into
+    # builds/unix/unix-cc.in at configure time (not a make-time variable),
+    # so we pass it to configure as an environment variable. Pin to host
+    # clang with the macOS SDK explicitly resolved.
+    HOST_CC_BUILD="$(xcrun --sdk macosx -f clang) -isysroot $(xcrun --sdk macosx --show-sdk-path)"
+    CC_BUILD="$HOST_CC_BUILD" "$SRC/configure" \
       --host="$HOST_TRIPLE" \
       --prefix="$PREFIX" \
       --enable-static --disable-shared \
@@ -244,16 +253,22 @@ case "$LIB" in
     fi
     install -m 644 "$MVK_LIB" "$PREFIX/lib/libMoltenVK.a"
     cp -R "$MVK_HDR/MoltenVK" "$PREFIX/include/" 2>/dev/null || true
-    # Synthesize vulkan.pc so mpv's `dependency('vulkan')` resolves. The
-    # headers come from libplacebo's bundled Vulkan-Headers (already on the
-    # libplacebo include path); the loader is statically linked from our
-    # prefix's libMoltenVK.a.
-    VK_HEADERS_DIR="$DEPS_DIR/$(ls "$DEPS_DIR" | grep '^libplacebo-' | head -1)/3rdparty/Vulkan-Headers/include"
+    # Vulkan headers (vulkan/, vk_video/) come from libplacebo's bundled
+    # 3rdparty/Vulkan-Headers — copy them into our prefix so consumers
+    # don't need a separate Vulkan SDK install. fetch-libmpv.sh keeps
+    # both mpv/ and vulkan/ during header sanitisation; the Swift
+    # modulemap's `render_vk.h` references vulkan/vulkan_core.h.
+    VK_HEADERS_SRC="$DEPS_DIR/$(ls "$DEPS_DIR" | grep '^libplacebo-' | head -1)/3rdparty/Vulkan-Headers/include"
+    cp -R "$VK_HEADERS_SRC/vulkan" "$PREFIX/include/" 2>/dev/null || true
+    cp -R "$VK_HEADERS_SRC/vk_video" "$PREFIX/include/" 2>/dev/null || true
+    # Synthesize vulkan.pc so mpv's `dependency('vulkan')` resolves. Now
+    # points at the prefix-local copy of the headers (idempotent across
+    # libplacebo version bumps).
     mkdir -p "$PREFIX/lib/pkgconfig"
     cat > "$PREFIX/lib/pkgconfig/vulkan.pc" <<EOF
 prefix=$PREFIX
 exec_prefix=\${prefix}
-includedir=$VK_HEADERS_DIR
+includedir=\${prefix}/include
 libdir=\${prefix}/lib
 
 Name: Vulkan-Loader

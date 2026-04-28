@@ -226,13 +226,23 @@ case "$LIB" in
   mpv)
     SRC="$(cd "$APPLE_DIR/.." && pwd)"   # mpv source = the repo we're in
     cd "$LIB_BUILD"
-    # mpv uses meson now (waf is gone in modern mpv). TODO: real meson invocation:
+    # mpv uses meson. TODO: real meson invocation. Sketch:
     #   meson setup "$SRC" \
     #     --cross-file=<generated> \
     #     --prefix="$PREFIX" \
     #     -Dlibmpv=true -Dcplayer=false -Dgpl=true \
-    #     -Dvulkan-render-api=enabled \   # our Phase 0c flag
-    #     -Dcoreaudio-avaudioengine=enabled  # our Phase 2 flag
+    #     -Davfoundation=enabled \   # ships ao_avfoundation; Phase 2 of plan
+    #     -Daudiounit=enabled \      # passthrough fallback (SPDIF, etc.)
+    #     -Dvulkan=enabled           # required by Phase 0c (MPV_RENDER_API_TYPE_VK)
+    #
+    # Notes for the implementer:
+    # - Phase 2 of the plan was originally going to add a custom AO (ao_coreaudio_avaudioengine).
+    #   That's no longer needed — upstream's ao_avfoundation does what we want once we pass
+    #   -Davfoundation=enabled. MPVKit 0.41.0 didn't enable it; that was the only reason
+    #   the consumer was stuck on ao_audiounit + workarounds. See plan §Phase 2 (revised).
+    # - Phase 0c's MPV_RENDER_API_TYPE_VK is exposed via this libmpv build automatically once
+    #   features['vulkan'] resolves true (depends on libplacebo + vulkan dep being present in
+    #   the cross prefix).
     echo "TODO: mpv meson cross-build for $SLICE/$ARCH"
     exit 1
     ;;

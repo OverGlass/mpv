@@ -110,7 +110,11 @@ cpp_link_args = [$(printf "'%s', " $LDFLAGS | sed 's/, $//')]
 
 [properties]
 needs_exe_wrapper = true
-sys_root = '$SDK_PATH'
+# Intentionally NOT setting sys_root: meson rewrites absolute -I paths it
+# receives from pkg-config to be sys_root-relative, which mangles our
+# host-side $PREFIX/include into $SDK_PATH$PREFIX/include. -isysroot is
+# already passed via c_args/c_link_args; that's sufficient for clang to
+# find SDK headers without polluting pkg-config-supplied include paths.
 pkg_config_libdir = '$PREFIX/lib/pkgconfig'
 
 [host_machine]
@@ -131,7 +135,12 @@ case "$LIB" in
       --enable-static --disable-shared \
       --without-harfbuzz --without-bzip2 --without-png --without-zlib --without-brotli \
       || { echo "TODO: freetype cross-config for $SLICE/$ARCH"; exit 1; }
-    make -j"$(sysctl -n hw.ncpu)" install
+    # NOTE: macOS 26+ syspolicyd serialises every libtool wrapper launch, which
+    # destroys parallel make for autotools libs (each spawn waits on the daemon).
+    # Run serial here — slower per-file but avoids pile-up. Pre-warm the wrapper
+    # so the first launch cost doesn't dominate.
+    "$LIB_BUILD/libtool" --version >/dev/null 2>&1 || true
+    make -j1 install
     ;;
 
   fribidi)
@@ -165,7 +174,9 @@ case "$LIB" in
     SRC="$(src_dir libunibreak)"
     cd "$LIB_BUILD"
     "$SRC/configure" --host="$HOST_TRIPLE" --prefix="$PREFIX" --enable-static --disable-shared
-    make -j"$(sysctl -n hw.ncpu)" install
+    # See freetype block re: macOS 26 syspolicyd / libtool serialisation.
+    "$LIB_BUILD/libtool" --version >/dev/null 2>&1 || true
+    make -j1 install
     ;;
 
   libass)
@@ -187,7 +198,9 @@ case "$LIB" in
     SRC="$(src_dir lcms2)"
     cd "$LIB_BUILD"
     "$SRC/configure" --host="$HOST_TRIPLE" --prefix="$PREFIX" --enable-static --disable-shared
-    make -j"$(sysctl -n hw.ncpu)" install
+    # See freetype block re: macOS 26 syspolicyd / libtool serialisation.
+    "$LIB_BUILD/libtool" --version >/dev/null 2>&1 || true
+    make -j1 install
     ;;
 
   MoltenVK)

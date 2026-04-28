@@ -3,7 +3,7 @@
   "ffmpeg": {
     "version": "7.1.1",
     "url": "https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz",
-    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+    "sha256": "733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1"
   },
   "libplacebo": {
     "version": "v7.351.0",
@@ -18,31 +18,31 @@
   "libass": {
     "version": "0.17.4",
     "url": "https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.gz",
-    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+    "sha256": "a886b3b80867f437bc55cff3280a652bfa0d37b43d2aff39ddf3c4f288b8c5a8"
   },
   "freetype": {
     "version": "2.13.3",
     "url": "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz",
-    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+    "sha256": "0550350666d427c74daeb85d5ac7bb353acba5f76956395995311a9c6f063289"
   },
   "fribidi": {
     "version": "1.0.16",
     "url": "https://github.com/fribidi/fribidi/releases/download/v1.0.16/fribidi-1.0.16.tar.xz",
-    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+    "sha256": "1b1cde5b235d40479e91be2f0e88a309e3214c8ab470ec8a2744d82a5a9ea05c"
   },
   "harfbuzz": {
     "version": "10.4.0",
     "url": "https://github.com/harfbuzz/harfbuzz/releases/download/10.4.0/harfbuzz-10.4.0.tar.xz",
-    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+    "sha256": "480b6d25014169300669aa1fc39fb356c142d5028324ea52b3a27648b9beaad8"
   },
   "libunibreak": {
     "version": "6.1",
     "url": "https://github.com/adah1972/libunibreak/releases/download/libunibreak_6_1/libunibreak-6.1.tar.gz",
-    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+    "sha256": "cc4de0099cf7ff05005ceabff4afed4c582a736abc38033e70fdac86335ce93f"
   },
   "lcms2": {
     "version": "2.17",
     "url": "https://github.com/mm2/Little-CMS/releases/download/lcms2.17/lcms2-2.17.tar.gz",
-    "sha256": "TODO_FILL_ON_FIRST_BUILD"
+    "sha256": "d11af569e42a1baa1650d20ad61d12e41af4fead4aa7964a01f93b08b53ab074"
   }
 }

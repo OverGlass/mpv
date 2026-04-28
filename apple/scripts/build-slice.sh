@@ -13,8 +13,8 @@ set -euo pipefail
 
 SLICE="${1:?slice}"
 LIB="${2:?lib}"
-DEPS_DIR="${3:?deps_dir}"
-SLICE_DIR="${4:?slice_build_dir}"
+DEPS_DIR="$(cd "${3:?deps_dir}" && pwd)"
+SLICE_DIR="$(mkdir -p "${4:?slice_build_dir}" && cd "$4" && pwd)"
 APPLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PREFIX="$SLICE_DIR/prefix"
@@ -69,7 +69,7 @@ CXX="$(xcrun --sdk "$SDK" -f clang++)"
 # TODO — resolve per-arch builds + lipo. For now this scaffolds one arch.
 ARCH="${ARCHS[0]}"
 ARCH_FLAG="-arch $ARCH"
-COMMON_CFLAGS="$ARCH_FLAG -isysroot $SDK_PATH $MIN_FLAG -fembed-bitcode-marker"
+COMMON_CFLAGS="$ARCH_FLAG -isysroot $SDK_PATH $MIN_FLAG -fPIC"
 COMMON_LDFLAGS="$ARCH_FLAG -isysroot $SDK_PATH $MIN_FLAG"
 
 export CC CXX
@@ -84,6 +84,43 @@ src_dir() {
   echo "$DEPS_DIR/$(ls "$DEPS_DIR" | grep "^$name-" | head -1)"
 }
 
+# Map our ARCH to meson's cpu_family.
+case "$ARCH" in
+  arm64)  CPU_FAMILY=aarch64; CPU=aarch64 ;;
+  x86_64) CPU_FAMILY=x86_64;  CPU=x86_64 ;;
+  *) echo "unknown arch: $ARCH" >&2; exit 2 ;;
+esac
+
+gen_meson_crossfile() {
+  local out="$1"
+  mkdir -p "$(dirname "$out")"
+  cat > "$out" <<EOF
+[binaries]
+c = ['$CC']
+cpp = ['$CXX']
+ar = ['$(xcrun --sdk "$SDK" -f ar)']
+strip = ['$(xcrun --sdk "$SDK" -f strip)']
+pkg-config = ['$(command -v pkg-config)']
+
+[built-in options]
+c_args = [$(printf "'%s', " $CFLAGS | sed 's/, $//')]
+c_link_args = [$(printf "'%s', " $LDFLAGS | sed 's/, $//')]
+cpp_args = [$(printf "'%s', " $CXXFLAGS | sed 's/, $//')]
+cpp_link_args = [$(printf "'%s', " $LDFLAGS | sed 's/, $//')]
+
+[properties]
+needs_exe_wrapper = true
+sys_root = '$SDK_PATH'
+pkg_config_libdir = '$PREFIX/lib/pkgconfig'
+
+[host_machine]
+system = 'darwin'
+cpu_family = '$CPU_FAMILY'
+cpu = '$CPU'
+endian = 'little'
+EOF
+}
+
 case "$LIB" in
   freetype)
     SRC="$(src_dir freetype)"
@@ -92,23 +129,36 @@ case "$LIB" in
       --host="$HOST_TRIPLE" \
       --prefix="$PREFIX" \
       --enable-static --disable-shared \
-      --without-harfbuzz --without-bzip2 --without-png --without-zlib \
+      --without-harfbuzz --without-bzip2 --without-png --without-zlib --without-brotli \
       || { echo "TODO: freetype cross-config for $SLICE/$ARCH"; exit 1; }
     make -j"$(sysctl -n hw.ncpu)" install
     ;;
 
   fribidi)
     SRC="$(src_dir fribidi)"
-    cd "$LIB_BUILD"
-    # TODO: fribidi uses meson; emit a meson cross file for $SLICE/$ARCH.
-    echo "TODO: fribidi meson cross-build for $SLICE/$ARCH"
-    exit 1
+    gen_meson_crossfile "$LIB_BUILD/cross.ini"
+    meson setup "$LIB_BUILD/build" "$SRC" \
+      --cross-file "$LIB_BUILD/cross.ini" \
+      --prefix="$PREFIX" \
+      --buildtype=release \
+      --default-library=static \
+      -Dtests=false -Ddocs=false -Dbin=false
+    meson install -C "$LIB_BUILD/build"
     ;;
 
   harfbuzz)
-    # TODO: meson cross-build, depends on freetype + fribidi.
-    echo "TODO: harfbuzz meson cross-build for $SLICE/$ARCH"
-    exit 1
+    SRC="$(src_dir harfbuzz)"
+    gen_meson_crossfile "$LIB_BUILD/cross.ini"
+    # Depends on freetype.
+    meson setup "$LIB_BUILD/build" "$SRC" \
+      --cross-file "$LIB_BUILD/cross.ini" \
+      --prefix="$PREFIX" \
+      --buildtype=release \
+      --default-library=static \
+      -Dtests=disabled -Ddocs=disabled -Dutilities=disabled \
+      -Dfreetype=enabled -Dcairo=disabled -Dchafa=disabled \
+      -Dglib=disabled -Dgobject=disabled -Dicu=disabled
+    meson install -C "$LIB_BUILD/build"
     ;;
 
   libunibreak)
@@ -119,9 +169,18 @@ case "$LIB" in
     ;;
 
   libass)
-    # TODO: depends on freetype + fribidi + harfbuzz + libunibreak.
-    echo "TODO: libass cross-build for $SLICE/$ARCH"
-    exit 1
+    SRC="$(src_dir libass)"
+    gen_meson_crossfile "$LIB_BUILD/cross.ini"
+    # Depends on freetype + fribidi + harfbuzz + libunibreak.
+    meson setup "$LIB_BUILD/build" "$SRC" \
+      --cross-file "$LIB_BUILD/cross.ini" \
+      --prefix="$PREFIX" \
+      --buildtype=release \
+      --default-library=static \
+      -Dtest=disabled -Dprofile=disabled -Dcompare=disabled -Dfuzz=disabled \
+      -Dfontconfig=disabled -Dcoretext=enabled -Ddirectwrite=disabled \
+      -Drequire-system-font-provider=true -Dlibunibreak=enabled
+    meson install -C "$LIB_BUILD/build"
     ;;
 
   lcms2)

@@ -238,6 +238,24 @@ case "$LIB" in
     fi
     install -m 644 "$MVK_LIB" "$PREFIX/lib/libMoltenVK.a"
     cp -R "$MVK_HDR/MoltenVK" "$PREFIX/include/" 2>/dev/null || true
+    # Synthesize vulkan.pc so mpv's `dependency('vulkan')` resolves. The
+    # headers come from libplacebo's bundled Vulkan-Headers (already on the
+    # libplacebo include path); the loader is statically linked from our
+    # prefix's libMoltenVK.a.
+    VK_HEADERS_DIR="$DEPS_DIR/$(ls "$DEPS_DIR" | grep '^libplacebo-' | head -1)/3rdparty/Vulkan-Headers/include"
+    mkdir -p "$PREFIX/lib/pkgconfig"
+    cat > "$PREFIX/lib/pkgconfig/vulkan.pc" <<EOF
+prefix=$PREFIX
+exec_prefix=\${prefix}
+includedir=$VK_HEADERS_DIR
+libdir=\${prefix}/lib
+
+Name: Vulkan-Loader
+Description: Vulkan loader (MoltenVK on Apple platforms)
+Version: 1.3.296
+Libs: -L\${libdir} -lMoltenVK -framework Metal -framework Foundation -framework QuartzCore -framework IOSurface
+Cflags: -I\${includedir}
+EOF
     echo "  ok: MoltenVK / $SLICE / $ARCH"
     ;;
 
@@ -311,26 +329,69 @@ case "$LIB" in
 
   mpv)
     SRC="$(cd "$APPLE_DIR/.." && pwd)"   # mpv source = the repo we're in
-    cd "$LIB_BUILD"
-    # mpv uses meson. TODO: real meson invocation. Sketch:
-    #   meson setup "$SRC" \
-    #     --cross-file=<generated> \
-    #     --prefix="$PREFIX" \
-    #     -Dlibmpv=true -Dcplayer=false -Dgpl=true \
-    #     -Davfoundation=enabled \   # ships ao_avfoundation; Phase 2 of plan
-    #     -Daudiounit=enabled \      # passthrough fallback (SPDIF, etc.)
-    #     -Dvulkan=enabled           # required by Phase 0c (MPV_RENDER_API_TYPE_VK)
-    #
-    # Notes for the implementer:
-    # - Phase 2 of the plan was originally going to add a custom AO (ao_coreaudio_avaudioengine).
-    #   That's no longer needed — upstream's ao_avfoundation does what we want once we pass
-    #   -Davfoundation=enabled. MPVKit 0.41.0 didn't enable it; that was the only reason
-    #   the consumer was stuck on ao_audiounit + workarounds. See plan §Phase 2 (revised).
-    # - Phase 0c's MPV_RENDER_API_TYPE_VK is exposed via this libmpv build automatically once
-    #   features['vulkan'] resolves true (depends on libplacebo + vulkan dep being present in
-    #   the cross prefix).
-    echo "TODO: mpv meson cross-build for $SLICE/$ARCH"
-    exit 1
+    gen_meson_crossfile "$LIB_BUILD/cross.ini"
+    # libmpv-only build for an iOS/Catalyst/tvOS Jellyfin client.
+    # - libmpv=true / cplayer=false: we only ship the library
+    # - avfoundation+audiounit: AVSampleBufferAudioRenderer first, audiounit as
+    #   bitstream-passthrough fallback (Phase 2)
+    # - vulkan + videotoolbox-pl: feeds Phase 0c's MPV_RENDER_API_TYPE_VK via
+    #   libplacebo. videotoolbox-gl is left disabled — we're done with GLES.
+    # - libass + lcms2 enabled because we have them in $PREFIX
+    # - everything Linux/Windows-only (x11, wayland, drm, gbm, alsa, pulse,
+    #   jack, sdl2, openal) explicitly disabled even though "auto" wouldn't
+    #   pick them up cross-compiling — keeps configure output clean
+    # - lua, javascript, libarchive, vapoursynth, rubberband, uchardet,
+    #   subrandr, zimg, jpeg, libavdevice, libbluray, cdda, dvbin, dvdnav,
+    #   coreaudio (macOS-only), gl* — all disabled for binary size
+    meson setup "$LIB_BUILD/build" "$SRC" \
+      --cross-file "$LIB_BUILD/cross.ini" \
+      --prefix="$PREFIX" \
+      --buildtype=release \
+      --default-library=static \
+      -Dlibmpv=true \
+      -Dcplayer=false \
+      -Dgpl=true \
+      -Davfoundation=enabled \
+      -Daudiounit=enabled \
+      -Dcoreaudio=disabled \
+      -Dvulkan=enabled \
+      -Dvideotoolbox-pl=enabled \
+      -Dvideotoolbox-gl=disabled \
+      -Dgl=disabled \
+      -Dgl-cocoa=disabled \
+      -Dlcms2=enabled \
+      -Dtests=false \
+      -Dfuzzers=false \
+      -Dmanpage-build=disabled \
+      -Dhtml-build=disabled \
+      -Dcdda=disabled \
+      -Ddvbin=disabled \
+      -Ddvdnav=disabled \
+      -Diconv=enabled \
+      -Djavascript=disabled \
+      -Djpeg=disabled \
+      -Dlibarchive=disabled \
+      -Dlibavdevice=disabled \
+      -Dlibbluray=disabled \
+      -Dlua=disabled \
+      -Drubberband=disabled \
+      -Dsubrandr=disabled \
+      -Duchardet=disabled \
+      -Dvapoursynth=disabled \
+      -Dzimg=disabled \
+      -Dzlib=enabled \
+      -Dpulse=disabled \
+      -Dalsa=disabled \
+      -Djack=disabled \
+      -Dopenal=disabled \
+      -Dsdl2=disabled \
+      -Dsdl2-audio=disabled \
+      -Dsdl2-video=disabled \
+      -Dx11=disabled \
+      -Dwayland=disabled \
+      -Ddrm=disabled \
+      -Dgbm=disabled
+    meson install -C "$LIB_BUILD/build"
     ;;
 
   *)

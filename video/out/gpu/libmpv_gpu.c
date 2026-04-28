@@ -9,6 +9,9 @@ static const struct libmpv_gpu_context_fns *context_backends[] = {
 #if HAVE_GL
     &libmpv_gpu_context_gl,
 #endif
+#if HAVE_VULKAN
+    &libmpv_gpu_context_vk,
+#endif
     NULL
 };
 

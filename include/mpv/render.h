@@ -50,6 +50,8 @@ extern "C" {
  * ------------------
  *
  * OpenGL: via MPV_RENDER_API_TYPE_OPENGL, see render_gl.h header.
+ * Vulkan: via MPV_RENDER_API_TYPE_VK, see render_vk.h header.
+ *         (mpv-apple fork extension; subject to upstream review.)
  * Software: via MPV_RENDER_API_TYPE_SW, see section "Software renderer"
  *
  * Threading
@@ -422,6 +424,23 @@ typedef enum mpv_render_param_type {
      * See MPV_RENDER_PARAM_SW_STRIDE for alignment requirements.
      */
     MPV_RENDER_PARAM_SW_POINTER = 20,
+    /**
+     * Required parameters for initializing the Vulkan renderer. Valid for
+     * mpv_render_context_create(). See render_vk.h.
+     * Type: mpv_vulkan_init_params*
+     *
+     * mpv-apple fork extension; not yet upstream.
+     */
+    MPV_RENDER_PARAM_VULKAN_INIT_PARAMS = 21,
+    /**
+     * Describes a Vulkan render target image. Valid for
+     * mpv_render_context_render() with MPV_RENDER_API_TYPE_VK. See
+     * render_vk.h for the struct definition and lifecycle rules.
+     * Type: mpv_vulkan_target_image*
+     *
+     * mpv-apple fork extension; not yet upstream.
+     */
+    MPV_RENDER_PARAM_VULKAN_TARGET_IMAGE = 22,
 } mpv_render_param_type;
 
 /**
@@ -466,6 +485,8 @@ typedef struct mpv_render_param {
  */
 // See render_gl.h
 #define MPV_RENDER_API_TYPE_OPENGL "opengl"
+// See render_vk.h. mpv-apple fork extension.
+#define MPV_RENDER_API_TYPE_VK "vulkan"
 // See section "Software renderer"
 #define MPV_RENDER_API_TYPE_SW "sw"
 

@@ -213,21 +213,42 @@ case "$LIB" in
   ffmpeg)
     SRC="$(src_dir ffmpeg)"
     cd "$LIB_BUILD"
-    # TODO: real cross-compile invocation. Sketch:
-    #   "$SRC/configure" \
-    #     --target-os=darwin \
-    #     --arch="$ARCH" \
-    #     --cc="$CC" \
-    #     --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS" \
-    #     --enable-cross-compile \
-    #     --prefix="$PREFIX" \
-    #     --disable-programs --disable-doc \
-    #     --enable-pic --enable-static --disable-shared \
-    #     --enable-videotoolbox \
-    #     --enable-libdav1d \
-    #     --disable-network  # we use NSURLSession-fronted IO
-    echo "TODO: ffmpeg cross-build for $SLICE/$ARCH"
-    exit 1
+    # ffmpeg doesn't use autotools or meson — its own ./configure has the
+    # cross-compile flags. It also doesn't go through libtool wrappers,
+    # so parallel make is safe (no syspolicyd pile-up).
+    #
+    # We KEEP network support: libmpv uses ffmpeg's demuxer to play HTTP(S)
+    # streams from Jellyfin. TLS via SecureTransport (Security.framework),
+    # so no openssl/gnutls needed in the link graph.
+    #
+    # We disable encoders, muxers, programs, docs — playback-only client.
+    # Decoders/demuxers/parsers/protocols stay default (autodetect) so we
+    # don't have to enumerate the full list a Jellyfin client might see.
+    "$SRC/configure" \
+      --prefix="$PREFIX" \
+      --target-os=darwin \
+      --arch="$ARCH" \
+      --enable-cross-compile \
+      --cc="$CC" \
+      --cxx="$CXX" \
+      --extra-cflags="$CFLAGS" \
+      --extra-ldflags="$LDFLAGS" \
+      --enable-static \
+      --disable-shared \
+      --enable-pic \
+      --enable-gpl \
+      --disable-programs \
+      --disable-doc \
+      --disable-debug \
+      --disable-encoders \
+      --disable-muxers \
+      --disable-avdevice \
+      --enable-videotoolbox \
+      --enable-audiotoolbox \
+      --enable-securetransport \
+      --pkg-config-flags="--static" \
+      --pkg-config="$(command -v pkg-config)"
+    make -j"$(sysctl -n hw.ncpu)" install
     ;;
 
   libplacebo)

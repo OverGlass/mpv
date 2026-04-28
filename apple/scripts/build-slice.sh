@@ -101,6 +101,9 @@ cpp = ['$CXX']
 ar = ['$(xcrun --sdk "$SDK" -f ar)']
 strip = ['$(xcrun --sdk "$SDK" -f strip)']
 pkg-config = ['$(command -v pkg-config)']
+# Pin Python to 3.13: 3.14's xml.etree.ElementTree API change breaks
+# libplacebo's gen.py (and probably other code generators we'll meet).
+python = ['$(command -v python3.11 || command -v python3.13 || command -v python3)']
 
 [built-in options]
 c_args = [$(printf "'%s', " $CFLAGS | sed 's/, $//')]
@@ -204,10 +207,38 @@ case "$LIB" in
     ;;
 
   MoltenVK)
-    # TODO: MoltenVK ships its own Xcode-driven build. Run fetchDependencies + ./Scripts/build-mvk.sh
-    # then copy MoltenVK.xcframework slices into our prefix-equivalent tree.
-    echo "TODO: MoltenVK build integration for $SLICE"
-    exit 1
+    SRC="$(src_dir MoltenVK)"
+    # MoltenVK has its own Xcode-driven build. Map our slice to its
+    # Makefile target + xcframework slice id.
+    case "$SLICE" in
+      ios-arm64)                       MVK_TARGET=ios;     MVK_SLICE=ios-arm64 ;;
+      ios-arm64_x86_64-simulator)      MVK_TARGET=iossim;  MVK_SLICE=ios-arm64_x86_64-simulator ;;
+      maccatalyst-arm64_x86_64)        MVK_TARGET=maccat;  MVK_SLICE=ios-arm64_x86_64-maccatalyst ;;
+      tvos-arm64)                      MVK_TARGET=tvos;    MVK_SLICE=tvos-arm64 ;;
+      tvos-arm64_x86_64-simulator)     MVK_TARGET=tvossim; MVK_SLICE=tvos-arm64_x86_64-simulator ;;
+      *) echo "MoltenVK: unhandled slice $SLICE" >&2; exit 2 ;;
+    esac
+    # fetchDependencies pulls SPIRV-Cross, glslang, SPIRV-Tools, Vulkan-Headers
+    # into the MoltenVK source tree. We let it cache between builds via a
+    # marker file so re-runs of the slice loop don't re-fetch every time.
+    if [[ ! -f "$SRC/.deps-fetched-$MVK_TARGET" ]]; then
+      (cd "$SRC" && ./fetchDependencies "--$MVK_TARGET")
+      touch "$SRC/.deps-fetched-$MVK_TARGET"
+    fi
+    (cd "$SRC" && make "$MVK_TARGET")
+    # The Makefile drops outputs into Package/Release/MoltenVK/. We copy
+    # the static archive + headers into our prefix so downstream consumers
+    # (libplacebo, mpv) can resolve -lMoltenVK and #include <MoltenVK/...>.
+    MVK_LIB="$SRC/Package/Release/MoltenVK/static/MoltenVK.xcframework/$MVK_SLICE/libMoltenVK.a"
+    MVK_HDR="$SRC/Package/Release/MoltenVK/include"
+    if [[ ! -f "$MVK_LIB" ]]; then
+      echo "MoltenVK: expected $MVK_LIB after build, not found"
+      ls -la "$SRC/Package/Release/MoltenVK/static/MoltenVK.xcframework/" 2>/dev/null || true
+      exit 1
+    fi
+    install -m 644 "$MVK_LIB" "$PREFIX/lib/libMoltenVK.a"
+    cp -R "$MVK_HDR/MoltenVK" "$PREFIX/include/" 2>/dev/null || true
+    echo "  ok: MoltenVK / $SLICE / $ARCH"
     ;;
 
   ffmpeg)
@@ -252,9 +283,30 @@ case "$LIB" in
     ;;
 
   libplacebo)
-    # TODO: meson cross + -Dvulkan=enabled -Dshaderc=enabled. Depends on MoltenVK headers.
-    echo "TODO: libplacebo meson cross-build for $SLICE/$ARCH"
-    exit 1
+    SRC="$(src_dir libplacebo)"
+    gen_meson_crossfile "$LIB_BUILD/cross.ini"
+    # libplacebo bundles Vulkan-Headers under 3rdparty/, so we don't need a
+    # system Vulkan SDK on the host. We disable demos/tests, the OpenGL and
+    # D3D11 backends, and shaderc/glslang on first pass — libplacebo can
+    # operate without runtime shader compilation for the modes mpv uses.
+    # Dolby Vision deferred per plan §HDR scope v2.
+    meson setup "$LIB_BUILD/build" "$SRC" \
+      --cross-file "$LIB_BUILD/cross.ini" \
+      --prefix="$PREFIX" \
+      --buildtype=release \
+      --default-library=static \
+      -Dvulkan=enabled \
+      -Dvk-proc-addr=disabled \
+      -Dopengl=disabled \
+      -Dd3d11=disabled \
+      -Dglslang=disabled \
+      -Dshaderc=disabled \
+      -Dlcms=enabled \
+      -Ddovi=disabled \
+      -Dlibdovi=disabled \
+      -Ddemos=false \
+      -Dtests=false
+    meson install -C "$LIB_BUILD/build"
     ;;
 
   mpv)

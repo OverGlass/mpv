@@ -382,6 +382,7 @@ EOF
       -Dvideotoolbox-gl=disabled \
       -Dgl=disabled \
       -Dgl-cocoa=disabled \
+      -Dios-gl=disabled \
       -Dlcms2=enabled \
       -Dtests=false \
       -Dfuzzers=false \

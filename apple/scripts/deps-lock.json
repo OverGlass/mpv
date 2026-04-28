@@ -6,9 +6,9 @@
     "sha256": "733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1"
   },
   "libplacebo": {
-    "version": "v7.351.0",
+    "version": "v7.360.1",
     "url": "https://github.com/haasn/libplacebo.git",
-    "ref": "v7.351.0"
+    "ref": "v7.360.1"
   },
   "MoltenVK": {
     "version": "v1.4.1",

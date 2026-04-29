@@ -112,6 +112,7 @@ option('macos-11-features', type: 'feature', value: 'auto', description: 'macOS 
 option('macos-11-3-features', type: 'feature', value: 'auto', description: 'macOS 11.3 SDK Features')
 option('macos-12-features', type: 'feature', value: 'auto', description: 'macOS 12 SDK Features')
 option('macos-cocoa-cb', type: 'feature', value: 'auto', description: 'macOS libmpv backend')
+option('libmpv-vulkan-render', type: 'feature', value: 'auto', description: 'Headless Vulkan ra_ctx for embedding mpv in apps that own the display surface (Apple platforms)')
 option('macos-media-player', type: 'feature', value: 'auto', description: 'macOS Media Player support')
 option('macos-touchbar', type: 'feature', value: 'auto', description: 'macOS Touch Bar support')
 option('macos-bundle-category', type : 'combo', choices : ['video', 'games'], value : 'video', description: 'macOS bundle category')

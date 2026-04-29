@@ -1669,6 +1669,19 @@ if features['cocoa'] and features['vulkan'] and features['swift']
     sources += files('video/out/vulkan/context_mac.m')
 endif
 
+# Headless Vulkan ra_ctx for embedding mpv in apps that own the display
+# surface (e.g. AVSampleBufferDisplayLayer + IOSurface). Enabled wherever
+# `vulkan` is — not Apple-specific, but the consumer pool callbacks
+# typically only make sense in an embedded context.
+libmpv_vulkan_render = get_option('libmpv-vulkan-render').require(
+    features['vulkan'] and get_option('libmpv'),
+    error_message: 'libmpv-vulkan-render requires both vulkan and libmpv',
+)
+features += {'libmpv-vulkan-render': libmpv_vulkan_render.allowed()}
+if features['libmpv-vulkan-render']
+    sources += files('video/out/vulkan/context_libmpv.c')
+endif
+
 macos_media_player = get_option('macos-media-player').require(
     features['swift'],
     error_message: 'Swift was not found!',
@@ -1828,6 +1841,9 @@ if get_option('libmpv')
     headers = ['include/mpv/client.h', 'include/mpv/render.h',
                'include/mpv/render_gl.h', 'include/mpv/render_vk.h',
                'include/mpv/stream_cb.h']
+    if features['libmpv-vulkan-render']
+        headers += ['include/mpv/render_libmpv_apple.h']
+    endif
     install_headers(headers, subdir: 'mpv')
 
     # Allow projects to build with libmpv by cloning into ./subprojects/mpv

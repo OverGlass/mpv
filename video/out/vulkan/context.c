@@ -442,6 +442,55 @@ error:
     return false;
 }
 
+bool ra_vk_ctx_init_headless(struct ra_ctx *ctx, struct mpvk_ctx *vk,
+                             struct ra_ctx_params params,
+                             const struct pl_vulkan_headless_swapchain_params *sw_params)
+{
+    // The non-headless `ra_vk_ctx_init` path differs only in how the
+    // swapchain is created — `pl_vulkan_create_swapchain` against
+    // `vk->surface`, vs. `pl_vulkan_create_headless_swapchain` against
+    // a caller-supplied VkImage pool. Everything else (the priv struct
+    // shape, the ra_swapchain wrapper, the `mppl_create_vulkan` call)
+    // is the same so it stays bit-identical between paths and keeps
+    // `ra_vk_ctx_get` / gpu_ctx_create's short-circuit working.
+    struct ra_swapchain *sw = ctx->swapchain = talloc_zero(NULL, struct ra_swapchain);
+    sw->ctx = ctx;
+    sw->fns = &vulkan_swapchain;
+
+    struct priv *p = sw->priv = talloc_zero(sw, struct priv);
+    p->vk = vk;
+    p->params = params;
+    p->opts = mp_get_config_group(p, ctx->global, &vulkan_conf);
+
+    // If `vk->vulkan` is already populated (the caller called
+    // `pl_vulkan_import` themselves with a pre-existing VkDevice — see
+    // `context_libmpv.c`), use it as-is. Otherwise create a fresh
+    // VkDevice via `mppl_create_vulkan` with no surface — without a
+    // surface, VK_KHR_swapchain isn't enabled at device level, which
+    // is exactly what we want for a headless context.
+    if (!vk->vulkan) {
+        vk->vulkan = mppl_create_vulkan(p->opts, vk->vkinst, vk->pllog,
+                                        VK_NULL_HANDLE, ctx->opts.allow_sw);
+        if (!vk->vulkan)
+            goto error;
+    }
+
+    vk->gpu = vk->vulkan->gpu;
+    ctx->ra = ra_create_pl(vk->gpu, ctx->log);
+    if (!ctx->ra)
+        goto error;
+
+    vk->swapchain = pl_vulkan_create_headless_swapchain(vk->vulkan, sw_params);
+    if (!vk->swapchain)
+        goto error;
+
+    return true;
+
+error:
+    ra_vk_ctx_uninit(ctx);
+    return false;
+}
+
 bool ra_vk_ctx_resize(struct ra_ctx *ctx, int width, int height)
 {
     struct priv *p = ctx->swapchain->priv;

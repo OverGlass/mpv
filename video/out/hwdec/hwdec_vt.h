@@ -50,8 +50,18 @@ struct priv {
 #endif
 
 #if HAVE_VIDEOTOOLBOX_PL
-    CVMetalTextureCacheRef mtl_texture_cache;
-    CVMetalTextureRef mtl_planes[MP_MAX_PLANES];
+    // `mtl_device` is a +1-retained `id<MTLDevice>` (via CFBridgingRetain).
+    // `mtl_planes[i]` is a +1-retained `id<MTLTexture>` (same).
+    // We hold them as `void *` so this header stays buildable from C
+    // sources (hwdec_vt.c) where Objective-C types aren't visible.
+    //
+    // We deliberately don't use CVMetalTextureCache here: in iOS 17+ Metal
+    // validation rejects IOSurface-backed MTLTextures unless they're
+    // explicitly created with `storageMode = MTLStorageModeShared`, and
+    // CVMetalTextureCache offers no public way to set the storage mode.
+    void *mtl_device;
+    void *mtl_planes[MP_MAX_PLANES];
+    CVMetalTextureCacheRef mtl_texture_cache; // unused; kept for ABI
 #endif
 
     struct ra_imgfmt_desc desc;

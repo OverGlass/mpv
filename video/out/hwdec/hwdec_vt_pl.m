@@ -115,19 +115,12 @@ static int mapper_init(struct ra_hwdec_mapper *mapper)
         mtl_device = MTLCreateSystemDefaultDevice();
     }
 
-    CVReturn err = CVMetalTextureCacheCreate(
-        kCFAllocatorDefault,
-        NULL,
-        mtl_device,
-        NULL,
-        &p->mtl_texture_cache);
-
+    // Stash the MTLDevice +1-retained for per-frame texture creation. We
+    // bypass CVMetalTextureCache because that API has no public way to
+    // pin `storageMode = MTLStorageModeShared`, which iOS 17+ Metal
+    // validation requires for IOSurface-backed textures.
+    p->mtl_device = (void *) CFBridgingRetain(mtl_device);
     [mtl_device release];
-
-    if (err != noErr) {
-        MP_ERR(mapper, "Failure in CVOpenGLESTextureCacheCreate: %d\n", err);
-        return -1;
-    }
 
     return 0;
 }
@@ -139,12 +132,14 @@ static void mapper_unmap(struct ra_hwdec_mapper *mapper)
     for (int i = 0; i < p->desc.num_planes; i++) {
         ra_tex_free(mapper->ra, &mapper->tex[i]);
         if (p->mtl_planes[i]) {
-            CFRelease(p->mtl_planes[i]);
+            // p->mtl_planes[i] is a +1-retained id<MTLTexture> — release
+            // via CFBridgingRelease (the inverse of CFBridgingRetain).
+            CFBridgingRelease((CFTypeRef) p->mtl_planes[i]);
             p->mtl_planes[i] = NULL;
         }
     }
 
-    CVMetalTextureCacheFlush(p->mtl_texture_cache, 0);
+    // (No CVMetalTextureCacheFlush: we don't use the cache — see mapper_init.)
 }
 
 static const struct {
@@ -238,21 +233,37 @@ static int mapper_map(struct ra_hwdec_mapper *mapper)
         size_t width  = CVPixelBufferGetWidthOfPlane(p->pbuf, i),
                height = CVPixelBufferGetHeightOfPlane(p->pbuf, i);
 
-        CVReturn err = CVMetalTextureCacheCreateTextureFromImage(
-            kCFAllocatorDefault,
-            p->mtl_texture_cache,
-            p->pbuf,
-            NULL,
-            format,
-            width,
-            height,
-            i,
-            &p->mtl_planes[i]);
-
-        if (err != noErr) {
-            MP_ERR(mapper, "error creating texture for plane %d: %d\n", i, err);
+        IOSurfaceRef io_surface = CVPixelBufferGetIOSurface(p->pbuf);
+        if (!io_surface) {
+            MP_ERR(mapper, "CVPixelBuffer plane %d has no backing IOSurface\n", i);
             return -1;
         }
+
+        // Build the descriptor by hand so we can pin storageMode = Shared.
+        // Without this, iOS 17+ rejects the texture with
+        //     -[MTLDebugDevice newTextureWithDescriptor:iosurface:plane:]
+        //     "IOSurface textures must use MTLStorageModeShared"
+        // and the per-frame interop fails silently — vo_gpu_next then
+        // renders nothing useful.
+        MTLTextureDescriptor *desc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:format
+                                         width:width
+                                        height:height
+                                     mipmapped:NO];
+        desc.storageMode = MTLStorageModeShared;
+        desc.usage       = MTLTextureUsageShaderRead;
+
+        id<MTLDevice> dev = (__bridge id<MTLDevice>) p->mtl_device;
+        id<MTLTexture> mtl_tex = [dev newTextureWithDescriptor:desc
+                                                     iosurface:io_surface
+                                                         plane:i];
+        if (!mtl_tex) {
+            MP_ERR(mapper, "newTextureWithIOSurface failed for plane %d\n", i);
+            return -1;
+        }
+
+        // Hand off ownership to p->mtl_planes — released in mapper_unmap.
+        p->mtl_planes[i] = (void *) CFBridgingRetain(mtl_tex);
 
         struct pl_tex_params tex_params = {
             .w = width,
@@ -263,7 +274,7 @@ static int mapper_map(struct ra_hwdec_mapper *mapper)
             .import_handle = PL_HANDLE_MTL_TEX,
             .shared_mem = (struct pl_shared_mem) {
                 .handle = {
-                    .handle = CVMetalTextureGetTexture(p->mtl_planes[i]),
+                    .handle = (__bridge void *) mtl_tex,
                 },
             },
         };
@@ -290,9 +301,9 @@ static void mapper_uninit(struct ra_hwdec_mapper *mapper)
     struct priv *p = mapper->priv;
 
     CVPixelBufferRelease(p->pbuf);
-    if (p->mtl_texture_cache) {
-        CFRelease(p->mtl_texture_cache);
-        p->mtl_texture_cache = NULL;
+    if (p->mtl_device) {
+        CFBridgingRelease((CFTypeRef) p->mtl_device);
+        p->mtl_device = NULL;
     }
 }
 

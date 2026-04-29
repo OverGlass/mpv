@@ -105,6 +105,14 @@ static int init(struct libmpv_gpu_context *ctx, mpv_render_param *params)
         },
         // graphics queue can act as transfer/compute fallback; libplacebo
         // detects this when queue_compute / queue_transfer are zeroed.
+        //
+        // libplacebo's pl_vulkan_import requires the VkDevice to be created
+        // with `pl_vulkan_required_features` enabled (hostQueryReset +
+        // timelineSemaphore). Mirror those into `params->features` so
+        // libplacebo's check_required_features sees them; the API contract
+        // pushes the burden of actually enabling them at vkCreateDevice
+        // time onto the consumer.
+        .features = &pl_vulkan_required_features,
     };
 
     p->vulkan = pl_vulkan_import(p->pllog, &import);

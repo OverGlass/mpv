@@ -42,22 +42,23 @@ ALL_LIBS=(
   "lcms2"
   "MoltenVK"
   "ffmpeg"
+  "glslang"
   "libplacebo"
   "mpv"
 )
 
 # ── argv parsing ────────────────────────────────────────────────────────────
 
-SLICES=("${ALL_SLICES[@]}")
-LIBS=("${ALL_LIBS[@]}")
+SLICES=()
+LIBS=()
 CLEAN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --slice)
-      SLICES=("$2"); shift 2 ;;
+      SLICES+=("$2"); shift 2 ;;
     --lib)
-      LIBS=("$2"); shift 2 ;;
+      LIBS+=("$2"); shift 2 ;;
     --clean)
       CLEAN=1; shift ;;
     -h|--help)
@@ -66,6 +67,10 @@ while [[ $# -gt 0 ]]; do
       echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+# Default to all slices/libs if the user didn't restrict.
+[[ ${#SLICES[@]} -eq 0 ]] && SLICES=("${ALL_SLICES[@]}")
+[[ ${#LIBS[@]}   -eq 0 ]] && LIBS=("${ALL_LIBS[@]}")
 
 # ── prerequisite check ─────────────────────────────────────────────────────
 
@@ -79,6 +84,7 @@ require pkg-config
 require automake
 require autoconf
 require libtool
+require cmake
 require xcodebuild
 
 # ── prepare ────────────────────────────────────────────────────────────────

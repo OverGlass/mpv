@@ -15,6 +15,11 @@
     "url": "https://github.com/KhronosGroup/MoltenVK.git",
     "ref": "v1.4.1"
   },
+  "glslang": {
+    "version": "15.4.0",
+    "url": "https://github.com/KhronosGroup/glslang.git",
+    "ref": "15.4.0"
+  },
   "libass": {
     "version": "0.17.4",
     "url": "https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.gz",

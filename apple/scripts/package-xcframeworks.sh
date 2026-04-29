@@ -20,6 +20,7 @@ LIBS=(
   "avcodec" "avformat" "avfilter" "avutil" "swresample" "swscale" "postproc"
   "placebo"
   "MoltenVK"
+  "glslang_combined"
   "ass" "freetype" "fribidi" "harfbuzz" "unibreak"
   "lcms2"
 )

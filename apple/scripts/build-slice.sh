@@ -69,8 +69,13 @@ CXX="$(xcrun --sdk "$SDK" -f clang++)"
 # TODO — resolve per-arch builds + lipo. For now this scaffolds one arch.
 ARCH="${ARCHS[0]}"
 ARCH_FLAG="-arch $ARCH"
-COMMON_CFLAGS="$ARCH_FLAG -isysroot $SDK_PATH $MIN_FLAG -fPIC"
-COMMON_LDFLAGS="$ARCH_FLAG -isysroot $SDK_PATH $MIN_FLAG"
+COMMON_CFLAGS="$ARCH_FLAG -isysroot $SDK_PATH $MIN_FLAG -fPIC -I$PREFIX/include"
+# `-L$PREFIX/lib` is needed for libs that look up dependencies via
+# `cxx.find_library` rather than pkg-config (e.g. libplacebo's glslang
+# probe — glslang installs cmake config files but no .pc, so meson
+# falls back to the C++ compiler's link search path which only has
+# what we put in cpp_link_args).
+COMMON_LDFLAGS="$ARCH_FLAG -isysroot $SDK_PATH $MIN_FLAG -L$PREFIX/lib"
 
 export CC CXX
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
@@ -323,24 +328,87 @@ EOF
     make -j"$(sysctl -n hw.ncpu)" install
     ;;
 
+  glslang)
+    SRC="$(src_dir glslang)"
+    # glslang is a cmake build. libplacebo's Vulkan render path needs a
+    # runtime SPIR-V compiler — without one, pl_vulkan_import fails with
+    # "Failed initializing any SPIR-V compiler!" and the iOS player never
+    # produces a frame (-18 / MPV_ERROR_UNSUPPORTED). We pick glslang over
+    # shaderc because it has zero transitive deps (shaderc pulls SPIRV-Tools
+    # too). Build with ENABLE_OPT=OFF since libplacebo treats the optimizer
+    # as optional.
+    cd "$LIB_BUILD"
+    cmake "$SRC" \
+      -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+      -DCMAKE_OSX_SYSROOT="$SDK_PATH" \
+      -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+      -DCMAKE_SYSTEM_NAME=iOS \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DENABLE_OPT=OFF \
+      -DENABLE_GLSLANG_BINARIES=OFF \
+      -DENABLE_HLSL=OFF \
+      -DENABLE_CTEST=OFF \
+      -DENABLE_PCH=OFF \
+      -DGLSLANG_TESTS=OFF \
+      -DGLSLANG_ENABLE_INSTALL=ON
+    cmake --build . --target install
+    # glslang installs as several archives (glslang, SPIRV, MachineIndependent,
+    # OSDependent, GenericCodeGen, glslang-default-resource-limits). The
+    # xcframework packager picks up one $PREFIX/lib/lib<name>.a per library —
+    # combine the sub-archives into one libglslang_combined.a so we ship a
+    # single xcframework + single -lglslang_combined consumer flag.
+    LIBTOOL="$(xcrun --sdk "$SDK" -f libtool)"
+    "$LIBTOOL" -static -o "$PREFIX/lib/libglslang_combined.a" \
+      "$PREFIX/lib/libglslang.a" \
+      "$PREFIX/lib/libSPIRV.a" \
+      "$PREFIX/lib/libMachineIndependent.a" \
+      "$PREFIX/lib/libOSDependent.a" \
+      "$PREFIX/lib/libGenericCodeGen.a" \
+      "$PREFIX/lib/libglslang-default-resource-limits.a"
+    ;;
+
   libplacebo)
     SRC="$(src_dir libplacebo)"
     gen_meson_crossfile "$LIB_BUILD/cross.ini"
-    # libplacebo bundles Vulkan-Headers under 3rdparty/, so we don't need a
-    # system Vulkan SDK on the host. We disable demos/tests, the OpenGL and
-    # D3D11 backends, and shaderc/glslang on first pass — libplacebo can
-    # operate without runtime shader compilation for the modes mpv uses.
+    # libplacebo 7.360.1 forgets `dirs: vulkan_lib_dirs` on the
+    # `cxx.find_library('glslang', ...)` call (sibling lookups for
+    # MachineIndependent/OSDependent/etc. all have it). Static
+    # find_library on iOS otherwise sees only the clang toolchain dir,
+    # which doesn't include our $PREFIX/lib. One-line idempotent sed.
+    if grep -q "find_library('glslang', required: required, static: static)$" "$SRC/src/glsl/meson.build"; then
+      python3 - "$SRC/src/glsl/meson.build" <<'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+old = "find_library('glslang', required: required, static: static)"
+new = "find_library('glslang', required: required, static: static, dirs: vulkan_lib_dirs)"
+text = p.read_text()
+if old in text:
+    p.write_text(text.replace(old, new))
+PYEOF
+    fi
+    # libplacebo bundles Vulkan-Headers under 3rdparty/. Demos/tests/D3D11/
+    # OpenGL backends are off; shaderc stays disabled (we picked glslang
+    # instead — installed by the prior step). glslang IS required: without
+    # a SPIR-V compiler, pl_vulkan_import fails before producing a frame.
     # Dolby Vision deferred per plan §HDR scope v2.
+    # `-Dvulkan-sdk=$PREFIX` is what libplacebo's meson uses to extend
+    # the search path for static `cxx.find_library('SPIRV', static: true)`.
+    # Without it, only clang's toolchain lib dir is searched and our
+    # glslang sub-archives in $PREFIX/lib are invisible.
     meson setup "$LIB_BUILD/build" "$SRC" \
       --cross-file "$LIB_BUILD/cross.ini" \
       --prefix="$PREFIX" \
       --buildtype=release \
       --default-library=static \
       -Dvulkan=enabled \
+      -Dvulkan-sdk="$PREFIX" \
       -Dvk-proc-addr=disabled \
       -Dopengl=disabled \
       -Dd3d11=disabled \
-      -Dglslang=disabled \
+      -Dglslang=enabled \
       -Dshaderc=disabled \
       -Dlcms=enabled \
       -Ddovi=disabled \

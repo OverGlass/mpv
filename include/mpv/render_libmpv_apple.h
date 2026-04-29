@@ -114,6 +114,19 @@ typedef struct mpv_libmpv_apple_pool_params {
      * the full semantics — the parameters are forwarded 1:1. */
     bool (*acquire)(void *priv, int *out_index);
     void (*present)(void *priv, int index, VkSemaphore sem_wait);
+
+    /* Called when mpv tears down the libmpvvk ra_ctx (i.e. when the
+     * video output is being destroyed — typically after `mpv_command
+     * "stop"`, file load, or `mpv_terminate_destroy`). Use this to
+     * release any host-side retain that was kept alive for the
+     * duration of the vo. The pointer in `priv` is the same value
+     * the host registered.
+     *
+     * NOTE: this fires from the mpv core/render thread, not the main
+     * thread. Optional — if NULL, the host is responsible for
+     * synchronising teardown by other means. */
+    void (*destroy)(void *priv);
+
     void *priv;
 } mpv_libmpv_apple_pool_params;
 

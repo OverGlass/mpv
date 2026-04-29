@@ -127,8 +127,15 @@ static void libmpv_uninit(struct ra_ctx *ctx)
     if (!p)
         return;
 
+    // Release Vulkan + ra_swapchain first — that completes any
+    // in-flight pl_swapchain work and stops further acquire/present
+    // callbacks. AFTER that quiesces, signal the host so it can drop
+    // its retain on the pool's `priv` pointer.
     ra_vk_ctx_uninit(ctx);
     mpvk_uninit(&p->vk);
+
+    if (p->pool.destroy)
+        p->pool.destroy(p->pool.priv);
 }
 
 static bool libmpv_init(struct ra_ctx *ctx)
@@ -207,6 +214,14 @@ static bool libmpv_init(struct ra_ctx *ctx)
     if (!ra_vk_ctx_init_headless(ctx, &p->vk, rcp, &sw))
         goto fail;
 
+    // vo_gpu_next reads vo->dwidth/dheight to set its render viewport.
+    // For a windowed ra_ctx, the platform reports the size on first
+    // reconfig — for headless we know it up-front (the pool dimensions
+    // are fixed at create time), so seed it now to avoid the
+    // "Window size: 1x1" first-frame degenerate path.
+    ctx->vo->dwidth  = p->pool.width;
+    ctx->vo->dheight = p->pool.height;
+
     return true;
 
 fail:
@@ -217,10 +232,16 @@ fail:
 static bool libmpv_reconfig(struct ra_ctx *ctx)
 {
     struct priv *p = ctx->priv;
-    // The pool's dimensions are fixed; tell mpv our render size matches.
-    // ra_vk_ctx_resize forwards to pl_swapchain_resize (a no-op for our
-    // headless impl) and then writes ctx->vo->dwidth/dheight.
-    return ra_vk_ctx_resize(ctx, p->pool.width, p->pool.height);
+    // Pool dimensions are fixed; tell mpv our render size matches.
+    //
+    // We deliberately do NOT route through `ra_vk_ctx_resize` here:
+    // that helper calls `pl_swapchain_resize`, and libplacebo's
+    // contract for swapchains without a `resize` impl is to zero the
+    // out-params, which would clobber dwidth/dheight back to 0 before
+    // the surrounding code reads them.
+    ctx->vo->dwidth  = p->pool.width;
+    ctx->vo->dheight = p->pool.height;
+    return true;
 }
 
 static int libmpv_control(struct ra_ctx *ctx, int *events, int request, void *arg)

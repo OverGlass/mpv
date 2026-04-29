@@ -373,22 +373,9 @@ EOF
   libplacebo)
     SRC="$(src_dir libplacebo)"
     gen_meson_crossfile "$LIB_BUILD/cross.ini"
-    # libplacebo 7.360.1 forgets `dirs: vulkan_lib_dirs` on the
-    # `cxx.find_library('glslang', ...)` call (sibling lookups for
-    # MachineIndependent/OSDependent/etc. all have it). Static
-    # find_library on iOS otherwise sees only the clang toolchain dir,
-    # which doesn't include our $PREFIX/lib. One-line idempotent sed.
-    if grep -q "find_library('glslang', required: required, static: static)$" "$SRC/src/glsl/meson.build"; then
-      python3 - "$SRC/src/glsl/meson.build" <<'PYEOF'
-import sys, pathlib
-p = pathlib.Path(sys.argv[1])
-old = "find_library('glslang', required: required, static: static)"
-new = "find_library('glslang', required: required, static: static, dirs: vulkan_lib_dirs)"
-text = p.read_text()
-if old in text:
-    p.write_text(text.replace(old, new))
-PYEOF
-    fi
+    # libplacebo source tweaks (glsl/meson.build dirs fix +
+    # pl_vulkan_create_headless_swapchain) live under
+    # `apple/patches/libplacebo/` and are applied by fetch-deps.sh.
     # libplacebo bundles Vulkan-Headers under 3rdparty/. Demos/tests/D3D11/
     # OpenGL backends are off; shaderc stays disabled (we picked glslang
     # instead — installed by the prior step). glslang IS required: without

@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH 1/2] glsl: pass vulkan_lib_dirs to find_library('glslang')
+
+The static `cxx.find_library` for the SPIRV/MachineIndependent/OSDependent/
+GenericCodeGen sub-archives all pass `dirs: vulkan_lib_dirs` so they pick
+up the glslang install in `<vulkan-sdk>/lib`. The find_library for
+`glslang` itself was missed and only searches the C++ compiler's default
+library path.
+
+In a cross-compile setup (e.g. iOS-on-MoltenVK), the toolchain's lib path
+doesn't contain anything we install ourselves, so the lookup fails with
+"C++ static library 'glslang' not found" even though the install is
+correct.
+
+Mirror the sibling lookups: pass `dirs: vulkan_lib_dirs`.
+---
+ src/glsl/meson.build | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/glsl/meson.build b/src/glsl/meson.build
+index c9a8542..95aac1a 100644
+--- a/src/glsl/meson.build
++++ b/src/glsl/meson.build
+@@ -59,7 +59,7 @@ elif not glslang_req.disabled()
+
+     # Glslang 15.0.0 moved some code around, add also linking to glslang, while
+     # this is not needed for older versions, it will still work.
+-    glslang_deps += cxx.find_library('glslang', required: required, static: static)
++    glslang_deps += cxx.find_library('glslang', required: required, static: static, dirs: vulkan_lib_dirs)
+
+     if static
+       glslang_deps += [

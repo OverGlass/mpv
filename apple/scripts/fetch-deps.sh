@@ -32,7 +32,8 @@ for NAME in $NAMES; do
   SHA="$(jq -r --arg n "$NAME" '.[$n].sha256 // empty' "$LOCK")"
   TARGET="$DEPS_DIR/$NAME-$VERSION"
 
-  if [[ -d "$TARGET/.fetched" ]]; then
+  # `touch` creates a regular file, so check `-f` not `-d`.
+  if [[ -f "$TARGET/.fetched" ]]; then
     echo "  [cache] $NAME-$VERSION"
     continue
   fi
@@ -57,6 +58,20 @@ for NAME in $NAMES; do
     rm -rf "$TARGET"
     mkdir -p "$TARGET"
     tar -xf "$TARBALL" -C "$TARGET" --strip-components=1
+  fi
+
+  # Apply any patches we ship for this dep, in lexicographic order. Patches
+  # live under `apple/patches/<name>/*.patch` and are applied with `-p1`
+  # against `$TARGET`. Idempotent because we only run when the dep was just
+  # (re-)extracted — a successful fetch implies pristine source.
+  PATCH_DIR="$APPLE_DIR/patches/$NAME"
+  if [[ -d "$PATCH_DIR" ]]; then
+    for PATCH in "$PATCH_DIR"/*.patch; do
+      [[ -e "$PATCH" ]] || continue
+      echo "  [patch] $NAME-$VERSION <- ${PATCH##*/}"
+      (cd "$TARGET" && patch -p1 --forward --silent < "$PATCH") \
+        || { echo "    failed applying $PATCH"; exit 1; }
+    done
   fi
 
   touch "$TARGET/.fetched"

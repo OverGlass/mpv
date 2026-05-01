@@ -48,9 +48,9 @@ static bool check_hwdec(const struct ra_hwdec *hw)
         return false;
     }
 
-    if (!(gpu->import_caps.tex & PL_HANDLE_MTL_TEX)) {
+    if (!(gpu->import_caps.tex & PL_HANDLE_IOSURFACE)) {
         MP_VERBOSE(hw, "VideoToolbox libplacebo interop requires support for "
-                       "PL_HANDLE_MTL_TEX import.\n");
+                       "PL_HANDLE_IOSURFACE import.\n");
         return false;
     }
 
@@ -82,45 +82,12 @@ static int mapper_init(struct ra_hwdec_mapper *mapper)
         }
     }
 
-    id<MTLDevice> mtl_device = nil;
-
-#ifdef VK_EXT_METAL_OBJECTS_SPEC_VERSION
-    pl_gpu gpu = ra_pl_get(mapper->ra);
-    if (gpu) {
-        pl_vulkan vulkan = pl_vulkan_get(gpu);
-        if (vulkan && vulkan->device && vulkan->instance && vulkan->get_proc_addr) {
-            PFN_vkExportMetalObjectsEXT pExportMetalObjects = (PFN_vkExportMetalObjectsEXT)vulkan->get_proc_addr(vulkan->instance, "vkExportMetalObjectsEXT");
-            if (pExportMetalObjects) {
-                VkExportMetalDeviceInfoEXT device_info = {
-                    .sType = VK_STRUCTURE_TYPE_EXPORT_METAL_DEVICE_INFO_EXT,
-                    .pNext = NULL,
-                    .mtlDevice = nil,
-                };
-
-                VkExportMetalObjectsInfoEXT objects_info = {
-                    .sType = VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECTS_INFO_EXT,
-                    .pNext = &device_info,
-                };
-
-                pExportMetalObjects(vulkan->device, &objects_info);
-
-                mtl_device = device_info.mtlDevice;
-                [mtl_device retain];
-            }
-        }
-    }
-#endif
-
-    if (!mtl_device) {
-        mtl_device = MTLCreateSystemDefaultDevice();
-    }
-
-    // Stash the MTLDevice +1-retained for per-frame texture creation. We
-    // bypass CVMetalTextureCache because that API has no public way to
-    // pin `storageMode = MTLStorageModeShared`, which iOS 17+ Metal
-    // validation requires for IOSurface-backed textures.
-    p->mtl_device = (void *) CFBridgingRetain(mtl_device);
-    [mtl_device release];
+    // PL_HANDLE_IOSURFACE path — libplacebo / MoltenVK import the IOSurface
+    // directly via VkImportMetalIOSurfaceInfoEXT. The patched MoltenVK
+    // (apple/patches/MoltenVK/0001-iosurface-plane-heuristic.patch) picks the
+    // matching IOSurface plane by dimensions, so we don't need an MTLDevice
+    // here at all.
+    p->mtl_device = NULL;
 
     return 0;
 }
@@ -132,14 +99,11 @@ static void mapper_unmap(struct ra_hwdec_mapper *mapper)
     for (int i = 0; i < p->desc.num_planes; i++) {
         ra_tex_free(mapper->ra, &mapper->tex[i]);
         if (p->mtl_planes[i]) {
-            // p->mtl_planes[i] is a +1-retained id<MTLTexture> — release
-            // via CFBridgingRelease (the inverse of CFBridgingRetain).
-            CFBridgingRelease((CFTypeRef) p->mtl_planes[i]);
+            // p->mtl_planes[i] holds a +1-retained IOSurfaceRef.
+            CFRelease((CFTypeRef) p->mtl_planes[i]);
             p->mtl_planes[i] = NULL;
         }
     }
-
-    // (No CVMetalTextureCacheFlush: we don't use the cache — see mapper_init.)
 }
 
 static const struct {
@@ -239,31 +203,11 @@ static int mapper_map(struct ra_hwdec_mapper *mapper)
             return -1;
         }
 
-        // Build the descriptor by hand so we can pin storageMode = Shared.
-        // Without this, iOS 17+ rejects the texture with
-        //     -[MTLDebugDevice newTextureWithDescriptor:iosurface:plane:]
-        //     "IOSurface textures must use MTLStorageModeShared"
-        // and the per-frame interop fails silently — vo_gpu_next then
-        // renders nothing useful.
-        MTLTextureDescriptor *desc = [MTLTextureDescriptor
-            texture2DDescriptorWithPixelFormat:format
-                                         width:width
-                                        height:height
-                                     mipmapped:NO];
-        desc.storageMode = MTLStorageModeShared;
-        desc.usage       = MTLTextureUsageShaderRead;
-
-        id<MTLDevice> dev = (__bridge id<MTLDevice>) p->mtl_device;
-        id<MTLTexture> mtl_tex = [dev newTextureWithDescriptor:desc
-                                                     iosurface:io_surface
-                                                         plane:i];
-        if (!mtl_tex) {
-            MP_ERR(mapper, "newTextureWithIOSurface failed for plane %d\n", i);
-            return -1;
-        }
-
-        // Hand off ownership to p->mtl_planes — released in mapper_unmap.
-        p->mtl_planes[i] = (void *) CFBridgingRetain(mtl_tex);
+        // Retain per-plane for lifetime symmetry with mapper_unmap. The same
+        // IOSurface backs every plane — our patched MoltenVK selects the
+        // matching IOSurface plane by VkImage extent.
+        CFRetain(io_surface);
+        p->mtl_planes[i] = (void *) io_surface;
 
         struct pl_tex_params tex_params = {
             .w = width,
@@ -271,10 +215,10 @@ static int mapper_map(struct ra_hwdec_mapper *mapper)
             .d = 0,
             .format = plfmt,
             .sampleable = true,
-            .import_handle = PL_HANDLE_MTL_TEX,
+            .import_handle = PL_HANDLE_IOSURFACE,
             .shared_mem = (struct pl_shared_mem) {
                 .handle = {
-                    .handle = (__bridge void *) mtl_tex,
+                    .handle = (void *) io_surface,
                 },
             },
         };
@@ -301,10 +245,7 @@ static void mapper_uninit(struct ra_hwdec_mapper *mapper)
     struct priv *p = mapper->priv;
 
     CVPixelBufferRelease(p->pbuf);
-    if (p->mtl_device) {
-        CFBridgingRelease((CFTypeRef) p->mtl_device);
-        p->mtl_device = NULL;
-    }
+    p->mtl_device = NULL;
 }
 
 bool vt_pl_init(const struct ra_hwdec *hw)

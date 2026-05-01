@@ -11,7 +11,7 @@ index cde38ce..e638f4e 100644
      uint32_t _bytesPerBlock;
      MTLPixelFormat _mtlPixFmt;
 diff --git a/MoltenVK/MoltenVK/GPUObjects/MVKImage.mm b/MoltenVK/MoltenVK/GPUObjects/MVKImage.mm
-index 5463d5a..3cfc4dc 100644
+index 5463d5a..994db1b 100644
 --- a/MoltenVK/MoltenVK/GPUObjects/MVKImage.mm
 +++ b/MoltenVK/MoltenVK/GPUObjects/MVKImage.mm
 @@ -62,7 +62,7 @@ id<MTLTexture> MVKImagePlane::getMTLTexture() {
@@ -31,41 +31,51 @@ index 5463d5a..3cfc4dc 100644
      _mtlTexture = nil;
  }
  
-@@ -1058,6 +1059,33 @@ VkResult MVKImage::useIOSurface(IOSurfaceRef ioSurface) {
+@@ -1058,6 +1059,43 @@ VkResult MVKImage::useIOSurface(IOSurfaceRef ioSurface) {
      MVKPixelFormats* pixFmts = getPixelFormats();
  
  	if (ioSurface) {
 +		// Heuristic for single-plane VkImage importing one plane of a multi-plane IOSurface
-+		// (e.g. PL_HANDLE_IOSURFACE for NV12 chroma plane via VkImportMetalIOSurfaceInfoEXT,
-+		// which has no plane field). When base dimensions don't match and the IOSurface is
-+		// multi-plane, search for a plane whose dimensions and pixel layout match the VkImage.
++		// (e.g. PL_HANDLE_IOSURFACE via VkImportMetalIOSurfaceInfoEXT, which has no plane
++		// field). Triggers when the IOSurface is multi-plane and either dimensions or
++		// per-element layout of plane 0 disagree with the requested VkImage. We then search
++		// the IOSurface planes for one whose dimensions match and whose row stride is
++		// compatible with the VkImage's block layout — robust against P010-style reporting
++		// where Apple uses (bpe=1, elementWidth=2) instead of (bpe=2, elementWidth=1) for a
++		// 16-bit luma plane.
 +		bool matchedSubPlane = false;
-+		if (!_hasChromaSubsampling && IOSurfaceGetPlaneCount(ioSurface) > 0 &&
-+		    (IOSurfaceGetWidth(ioSurface) != _extent.width || IOSurfaceGetHeight(ioSurface) != _extent.height)) {
-+			size_t planeCount = IOSurfaceGetPlaneCount(ioSurface);
++		if (!_hasChromaSubsampling && IOSurfaceGetPlaneCount(ioSurface) > 0) {
 +			uint32_t bpb = pixFmts->getBytesPerBlock(_vkFormat);
 +			VkExtent2D blk = pixFmts->getBlockTexelSize(_vkFormat);
-+			int32_t matchIdx = -1;
-+			for (size_t p = 0; p < planeCount; ++p) {
-+				if (IOSurfaceGetWidthOfPlane(ioSurface, p) == _extent.width &&
-+				    IOSurfaceGetHeightOfPlane(ioSurface, p) == _extent.height &&
-+				    IOSurfaceGetBytesPerElementOfPlane(ioSurface, p) == bpb &&
-+				    IOSurfaceGetElementWidthOfPlane(ioSurface, p) == blk.width &&
-+				    IOSurfaceGetElementHeightOfPlane(ioSurface, p) == blk.height) {
-+					if (matchIdx >= 0) { matchIdx = -1; break; } // ambiguous
-+					matchIdx = (int32_t)p;
++			bool baseDimMismatch = (IOSurfaceGetWidth(ioSurface) != _extent.width ||
++			                        IOSurfaceGetHeight(ioSurface) != _extent.height);
++			bool baseFmtMismatch = (IOSurfaceGetBytesPerElement(ioSurface) != bpb ||
++			                        IOSurfaceGetElementWidth(ioSurface) != blk.width ||
++			                        IOSurfaceGetElementHeight(ioSurface) != blk.height);
++			if (baseDimMismatch || baseFmtMismatch) {
++				size_t planeCount = IOSurfaceGetPlaneCount(ioSurface);
++				size_t expectedBpr = ((size_t)_extent.width + blk.width - 1) / blk.width * bpb;
++				int32_t matchIdx = -1;
++				for (size_t p = 0; p < planeCount; ++p) {
++					size_t pw = IOSurfaceGetWidthOfPlane(ioSurface, p);
++					size_t ph = IOSurfaceGetHeightOfPlane(ioSurface, p);
++					size_t pbpr = IOSurfaceGetBytesPerRowOfPlane(ioSurface, p);
++					if (pw == _extent.width && ph == _extent.height && pbpr >= expectedBpr) {
++						if (matchIdx >= 0) { matchIdx = -1; break; } // ambiguous
++						matchIdx = (int32_t)p;
++					}
 +				}
-+			}
-+			if (matchIdx >= 0) {
-+				_planes[0]->_ioSurfacePlane = (uint8_t)matchIdx;
-+				matchedSubPlane = true;
++				if (matchIdx >= 0) {
++					_planes[0]->_ioSurfacePlane = (uint8_t)matchIdx;
++					matchedSubPlane = true;
++				}
 +			}
 +		}
 +		if (!matchedSubPlane) {
  		if (IOSurfaceGetWidth(ioSurface) != _extent.width) { return reportError(VK_ERROR_INITIALIZATION_FAILED, "vkUseIOSurfaceMVK() : IOSurface width %zu does not match VkImage width %d.", IOSurfaceGetWidth(ioSurface), _extent.width); }
  		if (IOSurfaceGetHeight(ioSurface) != _extent.height) { return reportError(VK_ERROR_INITIALIZATION_FAILED, "vkUseIOSurfaceMVK() : IOSurface height %zu does not match VkImage height %d.", IOSurfaceGetHeight(ioSurface), _extent.height); }
  		if (IOSurfaceGetBytesPerElement(ioSurface) != pixFmts->getBytesPerBlock(_vkFormat)) { return reportError(VK_ERROR_INITIALIZATION_FAILED, "vkUseIOSurfaceMVK() : IOSurface bytes per element %zu does not match VkImage bytes per element %d.", IOSurfaceGetBytesPerElement(ioSurface), pixFmts->getBytesPerBlock(_vkFormat)); }
-@@ -1073,6 +1101,7 @@ VkResult MVKImage::useIOSurface(IOSurfaceRef ioSurface) {
+@@ -1073,6 +1111,7 @@ VkResult MVKImage::useIOSurface(IOSurfaceRef ioSurface) {
                  if (IOSurfaceGetElementHeightOfPlane(ioSurface, planeIndex) != _planes[planeIndex]->_blockTexelSize.height) { return reportError(VK_ERROR_INITIALIZATION_FAILED, "vkUseIOSurfaceMVK() : IOSurface element height %zu of plane %d does not match VkImage element height %d.", IOSurfaceGetElementHeightOfPlane(ioSurface, planeIndex), planeIndex, _planes[planeIndex]->_blockTexelSize.height); }
              }
          }
@@ -73,7 +83,7 @@ index 5463d5a..3cfc4dc 100644
  
          _ioSurface = ioSurface;
          CFRetain(_ioSurface);
-@@ -1112,7 +1141,7 @@ VkResult MVKImage::useIOSurface(IOSurfaceRef ioSurface) {
+@@ -1112,7 +1151,7 @@ VkResult MVKImage::useIOSurface(IOSurfaceRef ioSurface) {
  }
  
  MTLStorageMode MVKImage::getMTLStorageMode() {

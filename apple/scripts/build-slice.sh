@@ -320,6 +320,8 @@ EOF
       --disable-encoders \
       --disable-muxers \
       --disable-avdevice \
+      --disable-filter=coreimage \
+      --disable-filter=coreimagesrc \
       --enable-videotoolbox \
       --enable-audiotoolbox \
       --enable-securetransport \

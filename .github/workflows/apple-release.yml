@@ -37,6 +37,13 @@ jobs:
       - name: Generate review patch series
         run: |
           mkdir -p out/patches
+          # actions/checkout only sets up origin. Add the canonical upstream
+          # remote so we can produce a patch series of just the fork-local
+          # commits (apple/main vs upstream/master).
+          if ! git remote get-url upstream >/dev/null 2>&1; then
+            git remote add upstream https://github.com/mpv-player/mpv.git
+          fi
+          git fetch --no-tags --depth=1000 upstream master
           git format-patch --output-directory out/patches upstream/master..HEAD
           tar czf out/patches.tgz -C out patches
 

@@ -6,6 +6,12 @@ on:
       - 'apple/v*'
   workflow_dispatch:
 
+permissions:
+  # softprops/action-gh-release needs contents:write to create the
+  # release + upload assets, and to call the release-notes generation
+  # endpoint. The default GITHUB_TOKEN is read-only for forks.
+  contents: write
+
 jobs:
   build:
     runs-on: macos-14

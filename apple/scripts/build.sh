@@ -28,7 +28,15 @@ XCF_DIR="$BUILD_DIR/xcframeworks"
 ALL_SLICES=(
   "ios-arm64"
   "ios-arm64_x86_64-simulator"
-  "maccatalyst-arm64_x86_64"
+  # maccatalyst-arm64_x86_64 is intentionally disabled in the default matrix.
+  # ffmpeg's libavformat/tls_securetransport.c uses SecItemImport /
+  # SecExternalFormat, which are macOS-only Security APIs that the Mac
+  # Catalyst SDK doesn't expose. Without them the file fails to compile,
+  # and disabling --enable-securetransport would leave Catalyst with no
+  # TLS backend at all (no HTTPS streaming for Jellyfin). Re-enable once
+  # we either ship a Network.framework-based TLS path or bring in
+  # OpenSSL/GnuTLS for the Catalyst slice. Pass `--slice
+  # maccatalyst-arm64_x86_64` explicitly to attempt it.
   "tvos-arm64"
   "tvos-arm64_x86_64-simulator"
 )

@@ -28,17 +28,21 @@ XCF_DIR="$BUILD_DIR/xcframeworks"
 ALL_SLICES=(
   "ios-arm64"
   "ios-arm64_x86_64-simulator"
-  # maccatalyst-arm64_x86_64 is intentionally disabled in the default matrix.
-  # ffmpeg's libavformat/tls_securetransport.c uses SecItemImport /
-  # SecExternalFormat, which are macOS-only Security APIs that the Mac
-  # Catalyst SDK doesn't expose. Without them the file fails to compile,
-  # and disabling --enable-securetransport would leave Catalyst with no
-  # TLS backend at all (no HTTPS streaming for Jellyfin). Re-enable once
-  # we either ship a Network.framework-based TLS path or bring in
-  # OpenSSL/GnuTLS for the Catalyst slice. Pass `--slice
-  # maccatalyst-arm64_x86_64` explicitly to attempt it.
-  "tvos-arm64"
-  "tvos-arm64_x86_64-simulator"
+  # maccatalyst-arm64_x86_64 / tvos-arm64 / tvos-arm64_x86_64-simulator
+  # are intentionally disabled in the default matrix.
+  #
+  # - Mac Catalyst: ffmpeg's libavformat/tls_securetransport.c uses
+  #   SecItemImport / SecExternalFormat, which are macOS-only Security
+  #   APIs the Mac Catalyst SDK doesn't expose. Dropping
+  #   --enable-securetransport would leave Catalyst with no TLS backend
+  #   at all (no HTTPS streaming).
+  # - tvOS: MoltenVK references MTLGPUFamilyApple9 (introduced after the
+  #   tvOS SDK shipped with Xcode 15.4). Building tvOS needs either an
+  #   Xcode bump on the runner or a MoltenVK source guard.
+  #
+  # Phase 1B is iOS-only, so park both targets until those gaps are
+  # solved separately. Local devs can opt in via
+  # `--slice maccatalyst-arm64_x86_64` / `--slice tvos-arm64` etc.
 )
 
 ALL_LIBS=(

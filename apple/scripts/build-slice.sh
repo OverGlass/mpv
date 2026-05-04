@@ -298,9 +298,19 @@ EOF
     # streams from Jellyfin. TLS via SecureTransport (Security.framework),
     # so no openssl/gnutls needed in the link graph.
     #
-    # We disable encoders, muxers, programs, docs — playback-only client.
-    # Decoders/demuxers/parsers/protocols stay default (autodetect) so we
-    # don't have to enumerate the full list a Jellyfin client might see.
+    # We disable encoders, muxers, programs, docs — mostly a
+    # playback-only client. Decoders/demuxers/parsers/protocols stay
+    # default (autodetect) so we don't have to enumerate the full list
+    # a Jellyfin client might see.
+    #
+    # Two encoders are carved out for the AirPlay-streamer module: the
+    # AudioToolbox-backed `aac_at` (HW on the audio DSP, our default
+    # path) and software `aac` as a safety net when AudioToolbox refuses
+    # the session (rare on backgrounded apps). Both are needed when the
+    # source audio is incompatible with AirPlay receivers (TrueHD, DTS,
+    # DTS-HD, DTS-X, Opus). Three muxers are similarly carved out: hls
+    # for the playlist Apple receivers require, plus mp4 + mov which
+    # the HLS muxer's `hls_segment_type=fmp4` writes through.
     "$SRC/configure" \
       --prefix="$PREFIX" \
       --target-os=darwin \
@@ -318,6 +328,8 @@ EOF
       --disable-doc \
       --disable-debug \
       --disable-encoders \
+      --enable-encoder=aac_at \
+      --enable-encoder=aac \
       --disable-muxers \
       --enable-muxer=hls \
       --enable-muxer=mp4 \

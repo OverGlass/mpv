@@ -319,6 +319,9 @@ EOF
       --disable-debug \
       --disable-encoders \
       --disable-muxers \
+      --enable-muxer=hls \
+      --enable-muxer=mp4 \
+      --enable-muxer=mov \
       --disable-avdevice \
       --disable-filter=coreimage \
       --disable-filter=coreimagesrc \

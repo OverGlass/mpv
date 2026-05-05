@@ -1,0 +1,56 @@
+From: Jellyfuse <noreply@arkbase.io>
+Subject: [PATCH] movenc: skip dby1 ftyp brand when video codec_tag is non-DV
+
+Apple HLS-fmp4 receivers (the macOS AirPlay Receiver in particular)
+match the ftyp's compatible_brands against the manifest's CODECS
+attribute. When CODECS declares plain HEVC ("hvc1.x.y.Lz.B0") but
+ftyp advertises "dby1", the receiver detects the mismatch and
+silently refuses the init segment — fetching it but never proceeding
+to media segments.
+
+Upstream's mov_write_ftyp_tag adds "dby1" whenever ANY stream is
+AC-3 / E-AC-3 / TrueHD or carries DOVI side data, even when the
+caller explicitly sets a non-DV video codec_tag (hvc1, avc1) to
+declare an HDR10 / SDR base-layer playback intent. That broad
+heuristic is wrong for the explicit-non-DV case.
+
+This patch suppresses the "dby1" brand whenever any video track has
+a codec_tag of hvc1 / avc1 / hev1 / avc3 — i.e., the caller has
+explicitly chosen a plain video brand. Genuine DV authoring (where
+codec_tag is dvh1 / dvhe / dvav / dva1) still gets "dby1" as before.
+
+Used by jellyfuse's airplay-streamer when downgrading a DV-bearing
+source to "hvc1" for receivers that don't decode our DV profile.
+
+---
+ libavformat/movenc.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/libavformat/movenc.c b/libavformat/movenc.c
+index 0000000..0000000 100644
+--- a/libavformat/movenc.c
++++ b/libavformat/movenc.c
+@@ -5851,6 +5851,23 @@ static int mov_write_ftyp_tag(AVIOContext *pb, AVFormatContext *s)
+             has_id3 = 1;
+     }
+
++    // jellyfuse: don't tag the file with "dby1" when the caller has
++    // explicitly chosen a plain video codec_tag (hvc1 / avc1 / hev1 /
++    // avc3). The default heuristic adds dby1 for any AC-3/E-AC-3/
++    // TrueHD audio or DOVI-tagged video, but Apple HLS receivers
++    // refuse the init segment when ftyp's compatible_brands say
++    // "this is a Dolby file" while the manifest's CODECS attribute
++    // says plain HEVC. Genuine DV authoring (codec_tag dvh1/dvhe/
++    // dvav/dva1) is unaffected.
++    for (int i = 0; has_dolby && i < mov->nb_streams; i++) {
++        AVStream *st = mov->tracks[i].st;
++        uint32_t tag = st->codecpar->codec_tag;
++        if (tag == MKTAG('h','v','c','1') || tag == MKTAG('a','v','c','1') ||
++            tag == MKTAG('h','e','v','1') || tag == MKTAG('a','v','c','3')) {
++            has_dolby = 0;
++        }
++    }
++
+     avio_wb32(pb, 0); /* size */
+     ffio_wfourcc(pb, "ftyp");
+
